@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09121f">
+  <title>NetScope · 실시간 트래픽 분석</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><div><strong>NetScope</strong><small>실시간 네트워크 관측</small></div></div>
+      <div class="top-metrics" aria-label="실시간 상태">
+        <span id="modeBadge" class="mode-badge">연결 대기</span>
+        <div class="metric"><span>현재 대역폭</span><strong id="bandwidth">—</strong></div>
+        <div class="metric"><span>패킷/초</span><strong id="pps">—</strong></div>
+        <div class="metric"><span>활성 Flow</span><strong id="flows">—</strong></div>
+        <div class="metric"><span>경고</span><strong id="alertCount">0</strong></div>
+      </div>
+      <div class="top-actions">
+        <div id="connectionStatus" class="connection-status" role="status"><i class="status-dot"></i><span>연결 중</span></div>
+        <button id="sourceToggle" class="control-button" type="button" disabled>일시정지</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro">
+        <div><p class="eyebrow">네트워크 현황 <span class="divider">/</span> 실시간 모니터링</p><h1>트래픽 개요</h1><p class="subhead">최근 60초의 통신 흐름과 이상 징후를 확인합니다.</p></div>
+        <div id="snapshotTime" class="update-time">스냅샷 대기 중</div>
+      </section>
+      <div id="healthBadges" class="health-row" aria-label="데이터 품질"><span class="health-normal">데이터 품질 확인 중</span></div>
+
+      <section class="chart-grid" aria-label="프로토콜 통계">
+        <article class="panel traffic-panel"><div class="panel-head"><div><p class="eyebrow">통신량 추이</p><h2>프로토콜별 통신량</h2></div><span class="panel-note">최근 60초 · 바이트/초</span></div><div class="chart-wrap"><canvas id="trafficChart" role="img" aria-label="프로토콜별 통신량 누적 영역 차트"></canvas></div></article>
+        <article class="panel donut-panel"><div class="panel-head"><div><p class="eyebrow">프로토콜 분포</p><h2>프로토콜 비율</h2></div></div><div class="donut-layout"><div class="donut-wrap"><canvas id="protocolChart" role="img" aria-label="프로토콜별 바이트 비율 도넛 차트"></canvas><div class="donut-center"><small>총 통신량</small><strong id="totalBytes">—</strong></div></div><div id="protocolLegend" class="protocol-legend"><span class="empty">데이터 대기 중</span></div></div></article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel graph-panel"><div class="panel-head"><div><p class="eyebrow">연결 관계</p><h2>IP 연결 그래프</h2></div><div class="graph-key"><span><i class="key-dot local"></i>내부</span><span><i class="key-dot external"></i>외부</span><span><i class="key-dot alert"></i>경고 대상</span></div></div><div class="graph-stage"><svg id="connectionGraph" role="img" aria-label="IP 연결 관계 그래프"></svg><div id="graphEmpty" class="graph-empty">연결 정보를 기다리는 중입니다</div><div id="graphTooltip" class="graph-tooltip" hidden></div><div class="graph-notes"><span id="graphOther" hidden></span><span id="graphLowerBound" hidden>엣지 값은 하한값</span></div></div></article>
+        <aside class="panel alert-panel"><div class="panel-head"><div><p class="eyebrow">탐지 알림</p><h2>경고 <span id="alertHeadingCount" class="count-pill">0</span></h2></div><span class="panel-note">최신순</span></div><div id="alertList" class="alert-list"><p class="empty">수신된 경고가 없습니다.</p></div></aside>
+      </section>
+
+      <section class="table-grid">
+        <article class="panel"><div class="panel-head"><div><p class="eyebrow">상위 통신 호스트</p><h2>통신량 상위 호스트</h2></div></div><div class="table-scroll"><table><thead><tr><th>IP 주소</th><th>구분</th><th>통신량</th><th>상대 IP</th></tr></thead><tbody id="talkerRows"><tr><td colspan="4" class="empty">데이터 대기 중</td></tr></tbody></table></div></article>
+        <article id="candidatePanel" class="panel"><div class="panel-head"><div><p class="eyebrow">연결 추정치</p><h2>추적 밖 대형 연결 후보(≈)</h2></div></div><div class="table-scroll"><table><thead><tr><th>출발지</th><th>목적지</th><th>추정 통신량</th></tr></thead><tbody id="candidateRows"><tr><td colspan="3" class="empty">후보 없음</td></tr></tbody></table></div></article>
+      </section>
+    </main>
+  </div>
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+</body>
+</html>

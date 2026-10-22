@@ -1,0 +1,8 @@
+.venv/
+.meshcode/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+out.txt
+err.txt
