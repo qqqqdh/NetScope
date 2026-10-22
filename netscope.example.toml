@@ -1,0 +1,28 @@
+# NetScope 설정 예시 — python -m netscope --config netscope.example.toml
+# CLI 인자가 이 파일보다 우선한다. 알 수 없는 키는 오류로 알린다.
+
+[server]
+mode = "sim"
+host = "127.0.0.1"   # 인증이 없으므로 로컬 전용 권장
+port = 8000
+
+[simulator]
+seed = 1
+speed = 1.0
+attack_interval = 45.0
+
+[engine]
+lateness = 1.0
+queue_max = 50000
+
+# 임계값 (기본값은 DESIGN.md §5.4). 필요한 것만 적는다.
+[thresholds]
+scan_ports = 20
+dns_queries = 80
+syn_min = 100
+cooldown = 30.0
+
+# 탐지기별 허용 목록 (CIDR). 예: 내부 DNS 서버, 사내 취약점 스캐너
+[allowlist]
+dns_flood = ["192.168.0.1/32"]
+port_scan = []

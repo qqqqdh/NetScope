@@ -19,6 +19,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .anomaly import Thresholds
 from .pipeline import Pipeline
 from .sources.realtime import SimSource
 from .sources.sim import live_demo
@@ -142,7 +143,9 @@ class Hub:
 
 def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_interval: float = 45.0,
                warmup: float = 40.0, queue_max: int = 50_000, lateness: float = 1.0,
-               send_timeout: float = 5.0, max_unacked: int = 5) -> FastAPI:
+               send_timeout: float = 5.0, max_unacked: int = 5,
+               thresholds: Thresholds | None = None,
+               allowlist: dict[str, list[str]] | None = None) -> FastAPI:
     if mode != "sim":
         raise ValueError(f"mode={mode!r}는 4단계에서 지원 예정입니다 (현재는 sim만)")
     hub = Hub(send_timeout=send_timeout, max_unacked=max_unacked)
@@ -150,7 +153,8 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         hub.loop = asyncio.get_running_loop()
-        pipe = Pipeline(live=False, queue_max=queue_max, lateness=lateness)
+        pipe = Pipeline(live=False, queue_max=queue_max, lateness=lateness,
+                        thresholds=thresholds, allowlist=allowlist)
         source = SimSource(live_demo(seed, start=time.time(), interval=attack_interval, warmup=warmup),
                            pipe.offer, speed=speed)
         pipe.status_provider = lambda: {"mode": mode, "source_running": source.running,

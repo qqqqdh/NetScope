@@ -23,12 +23,12 @@ BACKLOG_SECONDS = 2.0
 
 class Pipeline:
     def __init__(self, *, live: bool = False, queue_max: int = 50_000, lateness: float = 1.0,
-                 thresholds: Thresholds | None = None, alert_history: int = 500,
-                 batch: int = 2_000) -> None:
+                 thresholds: Thresholds | None = None, allowlist: dict[str, list[str]] | None = None,
+                 alert_history: int = 500, batch: int = 2_000) -> None:
         self.live = live
         self.queue: queue.Queue = queue.Queue(maxsize=queue_max)
         self.engine = CoreEngine(live=live, lateness=lateness)
-        self.detector = AnomalyDetector(self.engine, thresholds)
+        self.detector = AnomalyDetector(self.engine, thresholds, allowlist)
         self.batch = batch
         self.on_publish: Callable[[int, str, list[dict]], None] | None = None
         self.status_provider: Callable[[], dict] = lambda: {}
