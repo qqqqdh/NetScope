@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .anomaly import Thresholds
 from .pipeline import Pipeline
-from .sources.realtime import SimSource
+from .sources.realtime import PacedSource, SimSource
 from .sources.sim import live_demo
 
 STATIC = Path(__file__).parent / "static"
@@ -145,25 +145,46 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
                warmup: float = 40.0, queue_max: int = 50_000, lateness: float = 1.0,
                send_timeout: float = 5.0, max_unacked: int = 5,
                thresholds: Thresholds | None = None,
-               allowlist: dict[str, list[str]] | None = None) -> FastAPI:
-    if mode != "sim":
-        raise ValueError(f"mode={mode!r}는 4단계에서 지원 예정입니다 (현재는 sim만)")
+               allowlist: dict[str, list[str]] | None = None,
+               pcap: str | None = None, iface: str | None = None, bpf: str | None = None) -> FastAPI:
+    if mode not in ("sim", "pcap", "live"):
+        raise ValueError(f"알 수 없는 mode: {mode!r} (sim | pcap | live)")
+    if mode == "pcap":
+        if not pcap:
+            raise ValueError("pcap 모드에는 --pcap 파일 경로가 필요합니다")
+        if not Path(pcap).is_file():
+            raise ValueError(f"PCAP 파일을 찾을 수 없습니다: {pcap}")
     hub = Hub(send_timeout=send_timeout, max_unacked=max_unacked)
+
+    def make_source(pipe: Pipeline):
+        if mode == "sim":
+            return SimSource(live_demo(seed, start=time.time(), interval=attack_interval, warmup=warmup),
+                             pipe.offer, speed=speed)
+        if mode == "pcap":
+            from .sources.pcap import iter_pcap
+            return PacedSource(iter_pcap(pcap), pipe.try_offer, speed=speed, retry_on_full=True,
+                               on_eof=pipe.request_flush, name="netscope-pcap")
+        from .sources.live import LiveSource
+        return LiveSource(pipe.offer, iface=iface, bpf=bpf)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         hub.loop = asyncio.get_running_loop()
-        pipe = Pipeline(live=False, queue_max=queue_max, lateness=lateness,
+        pipe = Pipeline(live=(mode == "live"), queue_max=queue_max, lateness=lateness,
                         thresholds=thresholds, allowlist=allowlist)
-        source = SimSource(live_demo(seed, start=time.time(), interval=attack_interval, warmup=warmup),
-                           pipe.offer, speed=speed)
+        source = make_source(pipe)
         pipe.status_provider = lambda: {"mode": mode, "source_running": source.running,
+                                        "source_finished": getattr(source, "finished", False),
                                         "clients": len(hub.clients),
                                         "ws_slow_disconnects": hub.slow_disconnects}
         pipe.on_publish = hub.publish_threadsafe
         app.state.pipe, app.state.source, app.state.hub = pipe, source, hub
         pipe.start()
-        source.start()
+        try:
+            source.start()
+        except Exception:
+            pipe.stop()
+            raise
         try:
             yield
         finally:

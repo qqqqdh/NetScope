@@ -311,8 +311,19 @@ v2의 "Space-Saving으로 축출하고 other에 합산"은 성립하지 않는�
   - 시계열은 1초 단위, 그래프는 마감된 5초 버킷 12개(60초) 단위다. 화면은 1초마다 갱신하지만 그래프 내용은 5초 단위로 바뀐다. 엣지 메모리를 1/5로 줄이기 위한 절충안이다.
 
 ### 5.7 Sources
-- **PcapSource**: `scapy.utils.PcapReader`로 스트리밍한다(전체를 메모리에 올리지 않음). 속도 옵션은 `--speed max | 1x | Nx`이고, 테스트에서는 `max`를 쓴다.
-- **LiveSource**: `AsyncSniffer(iface, filter=bpf, store=False, prn=enqueue)`. Npcap과 관리자 권한이 필요하다.
+- **PcapSource**: 파일을 한 패킷씩 스트리밍한다(전체를 메모리에 올리지 않음). `--speed 0`은 최대 속도, `N`은 N배속이다.
+  - **역압**: PCAP 재생은 큐가 차면 패킷을 버리지 않고 기다렸다 다시 넣는다. 재생 결과가 기계 속도에 따라 달라지면 안 되기 때문이다. Live는 반대로 버리고 `queue_drop`으로 센다(캡처 스레드를 멈출 수 없으므로).
+  - 입력이 끝나면 워커가 큐를 비운 뒤 남은 초를 모두 마감한다.
+- **LiveSource**: `AsyncSniffer(iface, filter=bpf, store=False, prn=enqueue)`. Npcap과 관리자 권한이 필요하다. Npcap이 없으면 설치 안내와 함께 시작을 거부한다.
+- **파서 (4단계에서 변경)**: 처음 설계는 Scapy `PcapReader`였지만, 실측 결과 **이 PC에서 약 1,100 pps**였다(패킷당 약 1ms, 대부분 Scapy의 범용 분해). 그래서 `struct` 기반 빠른 파서(`sources/fastparse.py`)를 추가했다.
+  - 지원: 클래식 pcap(µs/ns), pcapng(EPB, `if_tsresol`), 링크 타입 Ethernet·VLAN/QinQ·Raw IP·Linux SLL/SLL2·Loopback, IPv4(옵션, 조각), IPv6(확장 헤더, 조각), TCP·UDP·ICMP·ICMPv6·ARP.
+  - 그 밖의 링크 타입 프레임만 Scapy로 넘긴다. Scapy 파서(`sources/parse.py`)는 **기준 구현**으로 남겨, 23가지 프레임·3가지 링크 타입·pcapng·나노초 pcap에서 두 결과가 같음을 테스트로 고정했다.
+  - 결과: 파싱 **82,000 pps (약 72배)**. 병목이 분석 단계(약 29,000 pps)로 옮겨 갔다.
+  - 한계: Live는 아직 Scapy가 패킷을 분해하므로 같은 병목(약 1~2k pps 예상)이 남아 있다. 원시 소켓 + 빠른 파서로 바꾸는 것은 Npcap 환경에서 검증할 수 있을 때 진행한다.
+- **검증 방법 (tshark 대체)**: 이 PC에 tshark가 없어 §7의 "tshark 통계 ±1%" 대신 다음으로 검증했다.
+  1. 왕복: 시뮬레이터 패킷 → 직접 만든 PCAP 기록기 → 파서 → 엔진이, 시뮬레이터 패킷을 바로 넣은 결과(패킷, 경고, 합계)와 완전히 같다.
+  2. 독립 집계기: Scapy와 무관한 최소 pcap 집계기의 레코드 수·바이트 합이 파서 결과와 같다.
+  3. pcap 모드 서버(큐 1,000)의 경고·합계가 오프라인 분석과 같고 손실이 0이다.
 - **SimulatedSource**: 시드로 고정되는 결정적 생성기다. 정상 트래픽에 공격 시나리오를 섞고, 공격마다 **`Episode` 정답 라벨**을 함께 내보낸다. 정상 상황을 재현하는 시나리오(§8.2)도 생성할 수 있다.
 - 공통 인터페이스는 `start() / stop() / stats()`이다. 재시작해도 큐와 워커는 그대로 유지된다.
 

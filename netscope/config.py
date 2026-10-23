@@ -25,6 +25,9 @@ class Config:
     attack_interval: float = 45.0
     lateness: float = 1.0
     queue_max: int = 50_000
+    pcap: str = ""
+    iface: str = ""
+    bpf: str = ""
     thresholds: Thresholds = field(default_factory=Thresholds)
     allowlist: dict[str, list[str]] = field(default_factory=dict)
 
@@ -34,6 +37,7 @@ _SECTIONS = {
     "server": ("mode", "host", "port"),
     "simulator": ("seed", "speed", "attack_interval"),
     "engine": ("lateness", "queue_max"),
+    "capture": ("pcap", "iface", "bpf"),
 }
 
 

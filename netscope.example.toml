@@ -15,6 +15,11 @@ attack_interval = 45.0
 lateness = 1.0
 queue_max = 50000
 
+[capture]
+pcap = ""            # --mode pcap 입력 파일
+iface = ""           # --mode live 인터페이스 (빈 값이면 기본)
+bpf = ""             # --mode live BPF 필터, 예: "ip and not port 22"
+
 # 임계값 (기본값은 DESIGN.md §5.4). 필요한 것만 적는다.
 [thresholds]
 scan_ports = 20

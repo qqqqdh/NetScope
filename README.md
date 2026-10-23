@@ -34,12 +34,31 @@ CLI 인자가 설정 파일보다 우선하고, 알 수 없는 키(오타)는 �
 시뮬레이터는 정상 트래픽 위에 포트 스캔 → SYN 플러드 → DNS 폭주 → 트래픽 급증을 `--attack-interval`초(시뮬레이터 시간)마다 돌아가며 주입한다.
 대시보드 화면만 확인하려면 `/?mock=1` (서버 데이터 대신 브라우저 내부 가짜 데이터).
 
-실제 캡처(`--mode live`)와 PCAP 재생(`--mode pcap`)은 4단계에서 추가한다.
+### PCAP 재생과 실제 캡처
+
+```bash
+python -m netscope --mode pcap --pcap capture.pcap --speed 0   # 대시보드로 재생 (0 = 최대 속도, N = N배속)
+python -m netscope --mode live --iface "Wi-Fi" --bpf "ip"         # 실제 캡처 (아래 주의)
+```
+
+- pcap과 pcapng를 모두 읽는다. PCAP 재생은 큐가 차면 패킷을 버리지 않고 기다리므로, 기계 속도와 상관없이 결과가 같다.
+- **live는 아직 실제 네트워크에서 검증하지 않았다.** Windows는 [Npcap](https://npcap.com) 설치와 관리자 권한, Linux는 root(또는 CAP_NET_RAW)가 필요하다.
+  패킷 분해를 Scapy가 하므로 처리량이 초당 1~2천 패킷 수준으로 제한될 것으로 예상한다.
+
+### 오프라인 분석
+
+```bash
+python -m netscope.replay capture.pcap --alerts-json alerts.json   # 서버 없이 최대 속도로 분석
+python -m netscope.replay --generate attacks:100 attacks.pcap      # 시뮬레이터로 테스트용 PCAP 생성
+```
+
+출력에는 단계별 처리량이 나온다. 개발 PC 측정치(시뮬레이터 PCAP 3만 패킷): 파싱 약 82,000 pps / 분석 약 29,000 pps.
+파서는 struct 기반으로 직접 구현했다. Scapy 파서(약 1,100 pps)는 기준 구현으로 남겨 결과가 같은지 테스트로 확인한다.
 
 ## 테스트와 평가
 
 ```bash
-python -m pytest -q                          # 약 40초
+python -m pytest -q                          # 140개, 약 1분
 python -m netscope.evaluate --seeds 1-20     # 평가 시드 (튜닝은 100-109)
 ```
 
@@ -64,6 +83,11 @@ MIT
 | `pipeline.py` | 제한 큐 → 분석 워커 → 스냅샷 발행 |
 | `server.py` | FastAPI REST + WebSocket(클라이언트별 송신 큐, ack) |
 | `sources/sim.py` | 결정적 시뮬레이터 + 정답 라벨 |
+| `sources/fastparse.py` | struct 기반 프레임 파서, pcap/pcapng 리더 |
+| `sources/pcap.py` | PCAP 읽기·기록, 독립 집계기 |
+| `sources/live.py` | 실제 캡처 (Scapy AsyncSniffer) |
+| `sources/realtime.py` | 배속 재생 소스 (시뮬레이터·PCAP 공용) |
+| `replay.py` | PCAP 오프라인 분석 CLI |
 | `evaluate.py` | Precision/Recall, Wilson 신뢰구간 |
 | `config.py` | TOML 설정 로딩, 외부 노출 경고 |
 | `static/` | 대시보드 (Chart.js, D3) |

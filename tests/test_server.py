@@ -138,4 +138,4 @@ def test_shutdown_within_two_seconds():
 
 def test_unsupported_mode_rejected():
     with pytest.raises(ValueError):
-        create_app(mode="live")
+        create_app(mode="bogus")

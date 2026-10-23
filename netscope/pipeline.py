@@ -57,6 +57,16 @@ class Pipeline:
             self._drops += 1
             return False
 
+    def try_offer(self, pkt: Packet) -> bool:
+        """큐가 차면 버리지 않고 False를 돌려준다 (PCAP 재생의 역압용, 손실로 세지 않음)."""
+        pkt.ingest_ts = time.time()
+        try:
+            self.queue.put_nowait(pkt)
+        except queue.Full:
+            return False
+        self.offered += 1
+        return True
+
     def request_flush(self) -> None:
         """입력 끝(PCAP 등): 큐를 비운 뒤 남은 초를 모두 마감하게 한다."""
         self._flush.set()
