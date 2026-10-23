@@ -186,6 +186,25 @@ def test_cohort_assigns_late_completion_to_syn_second():
     assert st.cohorts[4000][:5] == [1, 0, 1, 0, 1] and 4001 not in st.cohorts
 
 
+# ---------------------------------------------------------------- 장시간 실행 메모리 (E4에서 발견)
+def test_server_mode_keeps_no_alerts_and_prunes_cooldowns():
+    eng = CoreEngine()
+    det = AnomalyDetector(eng, keep_alerts=0)
+    delivered = []
+    pk = []
+    for s in range(40):                                  # 공격자 40명이 1초씩 차례로 스캔
+        src = f"45.33.0.{s + 1}"
+        pk += [tcp(6000 + s + p * 0.01, src, "192.168.0.10", 40000, p, "S", seq=p) for p in range(1, 31)]
+    pk.append(tcp(6200, "192.168.0.2", "8.8.8.8", 1, 443))   # 마지막 공격 후 160초 → 정리 시점 지남
+    for p in sorted(pk, key=lambda p: p.ts):
+        eng.ingest(p)
+        delivered += det.drain()
+    eng.flush()
+    delivered += det.drain()
+    assert len(delivered) == 40 and len(det.alerts) == 0  # 전달은 되지만 보관하지 않음
+    assert len(det._last_fired) == 0                      # 쿨다운이 끝난 항목은 정리됨
+
+
 # ---------------------------------------------------------------- dns / spike
 def test_dns_flood_sustained():
     eng, det = make()

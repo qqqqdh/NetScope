@@ -1,0 +1,27 @@
+기준선(FastAPI·Scapy import 후) RSS 104 MB, 부하 100,000 pps × 70초 (이벤트 시간)
+   10초: RSS    687 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (9,306 pps)
+   20초: RSS    699 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (8,170 pps)
+   30초: RSS    712 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (7,713 pps)
+   40초: RSS    725 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (7,691 pps)
+   50초: RSS    734 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (7,671 pps)
+   60초: RSS    742 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (7,647 pps)
+   70초: RSS    750 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (7,612 pps)
+최대 RSS 751 MB (기준선 대비 +647 MB), 목표 ≤ 320 MB, 상한 400 MB → 초과
+health: {'edge_untracked': 6610372, 'detector_eviction': 6089081, 'flow_eviction': 6849830}
+
+netscope 코드가 할당한 메모리 합계 162 MB, 상위 15개 위치:
+     26.8 MB    150,004개  flows.py:98
+     25.2 MB    150,000개  flows.py:132
+     13.2 MB    150,001개  flows.py:86
+     10.5 MB          1개  flows.py:133
+      9.4 MB    102,771개  analyzer.py:107
+      8.4 MB    150,000개  flows.py:131
+      8.4 MB    150,000개  flows.py:130
+      6.0 MB     69,598개  analyzer.py:104
+      5.9 MB    105,000개  protocols.py:32
+      4.7 MB     73,143개  analyzer.py:94
+      4.5 MB     70,000개  analyzer.py:36
+      3.8 MB     57,182개  bounded.py:64
+      3.3 MB      6,380개  bounded.py:136
+      2.8 MB     38,670개  bounded.py:41
+      2.2 MB     10,000개  anomaly.py:347

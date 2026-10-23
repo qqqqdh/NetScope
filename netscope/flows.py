@@ -35,19 +35,16 @@ class FlowEvent:
 
 
 class Flow:
-    __slots__ = ("key", "proto", "ver", "ips", "ports", "init", "state", "first_ts",
-                 "last_ts", "syn_ts", "isn", "pkts", "bytes", "dirs", "fins", "cls",
-                 "tclass")
+    # 메모리: Flow 15만 개가 상주하므로(E4) proto·ver·ips·ports는 따로 저장하지 않고 key에서 꺼낸다.
+    # key = (proto, ver, side0_ip, side0_port, side1_ip, side1_port), side0이 정렬상 작은 쪽
+    __slots__ = ("key", "init", "state", "last_ts", "syn_ts", "isn", "pkts", "bytes", "dirs",
+                 "fins", "cls", "tclass")
 
-    def __init__(self, key, pkt: Packet, ips, ports) -> None:
+    def __init__(self, key, pkt: Packet) -> None:
         self.key = key
-        self.proto = pkt.proto
-        self.ver = pkt.ver
-        self.ips = ips          # (side0, side1) — side0이 정렬상 작은 쪽
-        self.ports = ports
         self.init: int | None = None
         self.state = OTHER
-        self.first_ts = self.last_ts = pkt.ts
+        self.last_ts = pkt.ts
         self.syn_ts: float | None = None
         self.isn: int | None = None
         self.pkts = 0
@@ -58,12 +55,28 @@ class Flow:
         self.tclass: int | None = None
 
     @property
+    def proto(self) -> str:
+        return self.key[0]
+
+    @property
+    def ver(self) -> int:
+        return self.key[1]
+
+    @property
+    def ips(self) -> tuple[int, int]:
+        return self.key[2], self.key[4]
+
+    @property
+    def ports(self) -> tuple[int, int]:
+        return self.key[3], self.key[5]
+
+    @property
     def bidirectional(self) -> bool:
         return self.dirs == 3
 
 
 class FlowTable:
-    def __init__(self, max_flows: int = 150_000) -> None:
+    def __init__(self, max_flows: int = 100_000) -> None:   # E4 실측으로 15만 → 10만 (DESIGN §6.2)
         self.max_flows = max_flows
         self._flows: dict = {}
         self._classes: dict[int, OrderedDict] = {t: OrderedDict() for t in set(TIMEOUTS.values())}
@@ -127,9 +140,7 @@ class FlowTable:
     def _create(self, key, pkt: Packet, side: int) -> Flow:
         if len(self._flows) >= self.max_flows:
             self._evict_one()
-        ips = (key[2], key[4])
-        ports = (key[3], key[5])
-        flow = Flow(key, pkt, ips, ports)
+        flow = Flow(key, pkt)
         self._flows[key] = flow
         if pkt.proto == "TCP":
             self.tcp_flows += 1

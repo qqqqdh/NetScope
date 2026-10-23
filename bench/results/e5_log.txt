@@ -1,0 +1,8 @@
+m=0.25: port_scan R=0.8333333333333334 P=1.0 FP=0  syn_flood R=0.9 P=1.0 FP=0  dns_flood R=0.9333333333333333 P=1.0 FP=0  traffic_spike R=0.6666666666666666 P=0.8 FP=7 (18s)
+m=0.5: port_scan R=0.5666666666666667 P=1.0 FP=0  syn_flood R=0.7666666666666667 P=1.0 FP=0  dns_flood R=0.7666666666666667 P=1.0 FP=0  traffic_spike R=0.6666666666666666 P=0.8 FP=6 (33s)
+m=0.75: port_scan R=0.4666666666666667 P=1.0 FP=0  syn_flood R=0.6666666666666666 P=1.0 FP=0  dns_flood R=0.5666666666666667 P=1.0 FP=0  traffic_spike R=0.6666666666666666 P=0.8695652173913043 FP=5 (46s)
+m=1.0: port_scan R=0.43333333333333335 P=1.0 FP=0  syn_flood R=0.5333333333333333 P=1.0 FP=0  dns_flood R=0.5 P=1.0 FP=0  traffic_spike R=0.6666666666666666 P=1.0 FP=3 (62s)
+m=1.5: port_scan R=0.26666666666666666 P=1.0 FP=0  syn_flood R=0.5 P=1.0 FP=0  dns_flood R=0.4 P=1.0 FP=0  traffic_spike R=0.5 P=1.0 FP=3 (78s)
+m=2.0: port_scan R=0.23333333333333334 P=1.0 FP=0  syn_flood R=0.4666666666666667 P=1.0 FP=0  dns_flood R=0.36666666666666664 P=1.0 FP=0  traffic_spike R=0.4666666666666667 P=1.0 FP=3 (93s)
+m=3.0: port_scan R=0.1 P=1.0 FP=0  syn_flood R=0.3 P=1.0 FP=0  dns_flood R=0.26666666666666666 P=1.0 FP=0  traffic_spike R=0.36666666666666664 P=1.0 FP=3 (109s)
+저장: bench\results\e5_pr.csv

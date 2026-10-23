@@ -1,0 +1,12 @@
+기준선(FastAPI·Scapy import 후) RSS 102 MB, 부하 100,000 pps × 90초 (이벤트 시간)
+   10초: RSS    340 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (35,629 pps)
+   20초: RSS    344 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (31,084 pps)
+   30초: RSS    349 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (29,563 pps)
+   40초: RSS    353 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (28,978 pps)
+   50초: RSS    358 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (28,545 pps)
+   60초: RSS    361 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (28,031 pps)
+   70초: RSS    365 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (27,521 pps)
+   80초: RSS    367 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (27,370 pps)
+   90초: RSS    367 MB  flows=150,000 scan_keys=10,000 syn_keys=5,000 dns_keys=10,000 edges/bucket≤5,000  (27,107 pps)
+최대 RSS 367 MB (기준선 대비 +264 MB), 목표 ≤ 320 MB, 상한 400 MB → 통과
+health: {'edge_untracked': 8499181, 'detector_eviction': 7848322, 'flow_eviction': 8849790}

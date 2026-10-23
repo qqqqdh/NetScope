@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import heapq
+import math
 import random
 from functools import lru_cache
 from typing import Iterator
@@ -420,25 +421,44 @@ class NatSurge(Actor):
 ATTACK_TYPES = ("port_scan", "syn_flood", "dns_flood", "traffic_spike")
 
 
+#: 공격 강도 범위. "normal"은 임계값보다 확실히 강한 범위(기본 평가, 균등 분포).
+#: "hard"는 기본 임계값에 해당하는 강도의 약 0.1~10배를 로그 균등 분포로 뽑는다(E5용).
+#: 임계값 해당 강도: 스캔 2포트/s(20/10초), 플러드 20 SYN/s(100/5초), DNS 8건/s(80/10초),
+#: 급증 약 200 pps × 1460B(≈ 기준선 100KB/s의 3배). 선형 균등 분포로 뽑으면 대부분이 임계값보다
+#: 강해 약한 공격이 거의 없었다(초기 E5 실행에서 발견).
+DIFFICULTY = {
+    "normal": {"log": False, "scan_rate": (30, 100), "flood_rate": (200, 800), "dns_rate": (15, 50),
+               "spike_pps": (400, 900)},
+    "hard": {"log": True, "scan_rate": (0.2, 20), "flood_rate": (2, 200), "dns_rate": (0.8, 80),
+             "spike_pps": (20, 2000)},
+}
+
+
 def attack_scenario(seed: int, repeat: int = 3, interval: float = 20.0, warmup: float = 40.0,
-                    randomize: bool = True) -> tuple[Simulation, float]:
+                    randomize: bool = True, difficulty: str = "normal") -> tuple[Simulation, float]:
     """공격 4종을 interval초 간격으로 repeat번씩 주입. (sim, 권장 실행 시간)을 돌려준다."""
     sim = Simulation(seed).add(Baseline())
     r = random.Random(f"{seed}:schedule")
+    rng = DIFFICULTY[difficulty]
     t = warmup
     for i in range(repeat):
         for kind in ATTACK_TYPES:
             u = (lambda lo, hi: r.uniform(lo, hi)) if randomize else (lambda lo, hi: (lo + hi) / 2)
+            if rng["log"] and randomize:
+                u_rate = lambda lo, hi: math.exp(r.uniform(math.log(lo), math.log(hi)))
+            else:
+                u_rate = u
             if kind == "port_scan":
                 attacker = f"45.33.{r.randint(1, 250)}.{r.randint(1, 250)}"
-                sim.add(PortScan(t, duration=u(3, 8), rate=u(30, 100), attacker=attacker))
+                sim.add(PortScan(t, duration=u(3, 8), rate=u_rate(*rng["scan_rate"]), attacker=attacker))
             elif kind == "syn_flood":
-                sim.add(SynFlood(t, duration=u(4, 8), rate=u(200, 800), synack_ratio=u(0.3, 0.9)))
+                sim.add(SynFlood(t, duration=u(4, 8), rate=u_rate(*rng["flood_rate"]),
+                                 synack_ratio=u(0.3, 0.9)))
             elif kind == "dns_flood":
                 host = f"192.168.0.{r.randint(60, 90)}"
-                sim.add(DnsFlood(t, duration=u(8, 12), rate=u(15, 50), host=host))
+                sim.add(DnsFlood(t, duration=u(8, 12), rate=u_rate(*rng["dns_rate"]), host=host))
             else:
-                sim.add(Spike(t, duration=u(2, 4), pps=u(400, 900),
+                sim.add(Spike(t, duration=u(2, 4), pps=u_rate(*rng["spike_pps"]),
                               host=f"192.168.0.{r.randint(2, 21)}"))
             t += interval
     return sim, t + 10

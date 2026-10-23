@@ -136,6 +136,29 @@ def test_shutdown_within_two_seconds():
     wait_for(lambda: netscope_threads() == [], timeout=1.0)
 
 
+def test_latency_metrics_after_acks():
+    # 배속 1: 시뮬레이터 이벤트 시간 ≈ 벽시계라 신선도 지표가 의미를 가진다
+    with TestClient(app(speed=1.0)) as c, c.websocket_connect("/ws") as ws:
+        ws.receive_json()
+        for _ in range(4):
+            next_snapshot(ws)
+        lat = wait_for(lambda: (l := c.get("/api/status").json()["latency"])["sampled_e2e"] and l)
+    for k in ("queue_wait", "packet_processing", "snapshot_freshness", "sampled_e2e", "ws_ack_rtt"):
+        assert lat[k] and lat[k]["n"] > 0, k
+    # 표본 패킷은 초 마감(최대 1초 + lateness 1초)을 기다린 뒤 화면에 반영된다
+    assert lat["packet_processing"]["p50"] <= lat["sampled_e2e"]["p50"] < 5.0
+    assert 0 < lat["snapshot_freshness"]["p50"] < 5.0
+
+
+def test_memory_reported_and_memory_high():
+    with TestClient(app(memory_budget_mb=1)) as c:                 # 예산 1MB → 반드시 초과
+        st = wait_for(lambda: (s := c.get("/api/status").json())["rss_mb"] and s)
+        assert st["rss_mb"] > 10 and st["structures"]["flows"] >= 0
+        snap = wait_for(lambda: (s := c.get("/api/snapshot")).status_code == 200
+                        and "memory_high" in {r["code"] for r in s.json()["health"]["reasons"]} and s.json())
+        assert snap["health"]["degraded"]
+
+
 def test_unsupported_mode_rejected():
     with pytest.raises(ValueError):
         create_app(mode="bogus")

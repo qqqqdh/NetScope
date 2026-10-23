@@ -1,0 +1,43 @@
+{
+  "lateness": 1.0,
+  "offered_packets": 10225,
+  "latency": {
+    "queue_wait": {
+      "n": 2000,
+      "p50": 0.0001,
+      "p95": 0.0003,
+      "max": 0.0047
+    },
+    "packet_processing": {
+      "n": 98,
+      "p50": 1.5231,
+      "p95": 1.9845,
+      "max": 2.0052
+    },
+    "snapshot_freshness": {
+      "n": 40,
+      "p50": 1.0,
+      "p95": 1.0176,
+      "max": 1.0235
+    },
+    "sampled_e2e": {
+      "n": 94,
+      "p50": 1.5305,
+      "p95": 1.9903,
+      "max": 2.0074
+    },
+    "ws_ack_rtt": {
+      "n": 40,
+      "p50": 0.0008,
+      "p95": 0.0013,
+      "max": 0.0014
+    }
+  },
+  "drop_rates": {
+    "queue_drop": 0.0,
+    "late_drop": 0.0,
+    "future_drop": 0.0
+  }
+}
+
+G5: Sampled E2E P95 1.9903s (목표 ≤ 2.5), Snapshot Freshness P95 1.0176s (목표 ≤ 1.5), late_drop 0.0000% (≤ 0.1%)

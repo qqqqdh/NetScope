@@ -16,20 +16,40 @@ from typing import Callable
 
 from .anomaly import AnomalyDetector, Thresholds
 from .engine import CoreEngine
+from .memory import rss_bytes
 from .models import Packet
 
 BACKLOG_SECONDS = 2.0
 
 
+def percentiles(values) -> dict | None:
+    """다른 스레드가 append 중인 deque도 안전하게 복사해 p50/p95/max를 돌려준다."""
+    for _ in range(3):
+        try:
+            v = sorted(values)
+            break
+        except RuntimeError:                       # deque mutated during iteration
+            continue
+    else:
+        return None
+    if not v:
+        return None
+    pick = lambda q: round(v[min(len(v) - 1, int(q * len(v)))], 4)
+    return {"n": len(v), "p50": pick(0.5), "p95": pick(0.95), "max": round(v[-1], 4)}
+
+
 class Pipeline:
     def __init__(self, *, live: bool = False, queue_max: int = 50_000, lateness: float = 1.0,
                  thresholds: Thresholds | None = None, allowlist: dict[str, list[str]] | None = None,
-                 alert_history: int = 500, batch: int = 2_000) -> None:
+                 alert_history: int = 500, batch: int = 2_000, memory_budget_mb: float = 400.0) -> None:
         self.live = live
         self.queue: queue.Queue = queue.Queue(maxsize=queue_max)
         self.engine = CoreEngine(live=live, lateness=lateness)
-        self.detector = AnomalyDetector(self.engine, thresholds, allowlist)
+        self.detector = AnomalyDetector(self.engine, thresholds, allowlist, keep_alerts=0)
         self.batch = batch
+        self.memory_budget_mb = memory_budget_mb
+        self.queue_wait: deque = deque(maxlen=2000)        # 큐에서 꺼낼 때까지 기다린 시간(표본)
+        self._cached = {"rss_mb": None, "structures": {}, "latency": {}}
         self.on_publish: Callable[[int, str, list[dict]], None] | None = None
         self.status_provider: Callable[[], dict] = lambda: {}
         self.started_at = time.time()
@@ -97,8 +117,11 @@ class Pipeline:
             if pkt is not None:
                 n = 0
                 while True:
-                    if n % 256 == 0 and time.time() - pkt.ingest_ts > BACKLOG_SECONDS:
-                        eng.health.record("backlog", eng.clock.max_event or pkt.ts)
+                    if n % 100 == 0:
+                        wait = time.time() - pkt.ingest_ts
+                        self.queue_wait.append(wait)
+                        if wait > BACKLOG_SECONDS:
+                            eng.health.record("backlog", eng.clock.max_event or pkt.ts)
                     if eng.ingest(pkt):
                         closed = True
                     n += 1
@@ -128,14 +151,27 @@ class Pipeline:
         if new:
             with self._alerts_lock:
                 self._alerts.extend(new)
-        snap = self.engine.snapshot()
+        eng = self.engine
+        rss = rss_bytes()
+        if rss is not None and rss > 0.9 * self.memory_budget_mb * 1e6:
+            eng.health.record("memory_high", eng.clock.max_event or time.time())
+        # 다른 스레드(REST)가 엔진을 직접 읽지 않도록 워커에서 계산해 둘
+        self._cached = {
+            "rss_mb": round(rss / 1e6, 1) if rss is not None else None,
+            "structures": eng.sizes(),
+            "latency": {"queue_wait": percentiles(self.queue_wait),
+                        "packet_processing": percentiles(eng.processing_latency)},
+        }
+        end = eng.clock.closed_until or 0
+        samples = eng.take_e2e_samples(end)
+        snap = eng.snapshot()
         snap["status"] = self.status()
         body = json.dumps(snap, separators=(",", ":"), ensure_ascii=False)
         self.seq += 1
         msg = f'{{"type":"snapshot","seq":{self.seq},"data":{body}}}'
         self.latest_snapshot, self.latest_message = body, msg
         if self.on_publish is not None:
-            self.on_publish(self.seq, msg, new)
+            self.on_publish(self.seq, msg, new, end, samples)
 
     # ------------------------------------------------------------ 조회 (아무 스레드)
     def pps(self) -> float:
@@ -149,7 +185,9 @@ class Pipeline:
     def status(self) -> dict:
         return {"pps": self.pps(), "uptime": round(time.time() - self.started_at, 1),
                 "queue_size": self.queue.qsize(), "offered": self.offered,
-                "queue_drops": self._drops, "seq": self.seq, **self.status_provider()}
+                "queue_drops": self._drops, "seq": self.seq, "rss_mb": self._cached["rss_mb"],
+                "memory_budget_mb": self.memory_budget_mb, "structures": self._cached["structures"],
+                "latency": dict(self._cached["latency"]), **self.status_provider()}
 
     def alerts(self, since_id: int | None = None, limit: int = 50) -> list[dict]:
         with self._alerts_lock:

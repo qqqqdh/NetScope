@@ -449,14 +449,17 @@ class TrafficSpikeDetector:
 # ====================================================================== 묶음
 class AnomalyDetector:
     def __init__(self, engine: CoreEngine, thresholds: Thresholds | None = None,
-                 allowlist: dict[str, list[str]] | None = None) -> None:
+                 allowlist: dict[str, list[str]] | None = None, keep_alerts: int | None = None) -> None:
+        """keep_alerts: self.alerts에 보관할 개수. None이면 전부(오프라인 평가용).
+        오래 도는 서버는 0을 쓴다 — 경고 이력은 Pipeline의 링버퍼가 따로 관리하고,
+        여기서 무제한으로 쌓으면 공격 중 메모리가 계속 늘어난다(E4에서 발견)."""
         self.engine = engine
         self.t = thresholds or Thresholds()
         self._allow = {k: LocalNets(v) for k, v in (allowlist or {}).items()}
         self._history: OrderedDict = OrderedDict()
         self._handshakes: deque = deque()                  # (ts, unidirectional)
         self._last_fired: dict = {}
-        self.alerts: list[Alert] = []
+        self.alerts = [] if keep_alerts is None else deque(maxlen=keep_alerts)
         self._pending: list[Alert] = []
         self.scan = PortScanDetector(self)
         self.syn = SynDetector(self)
@@ -504,6 +507,10 @@ class AnomalyDetector:
             self._handshakes.popleft()
         if self.visibility() == "unidirectional":
             self.engine.health.record("unidirectional", sec)
+        if sec % 60 == 0:                                   # 쿨다운이 끝난 항목 정리 (키 수만큼 계속 늘지 않게)
+            expired = [k for k, last in self._last_fired.items() if now - last >= self.t.cooldown]
+            for k in expired:
+                del self._last_fired[k]
         cands = (self.scan.evaluate(now) + self.syn.evaluate(sec)
                  + self.dns.evaluate(now) + self.spike.evaluate(sec))
         for a in cands:

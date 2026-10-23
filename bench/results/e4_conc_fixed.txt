@@ -1,0 +1,13 @@
+기준선(FastAPI·Scapy import 후) RSS 103 MB, 부하 100,000 pps × 90초 (이벤트 시간)
+   10초: RSS    339 MB  flows=150,000 scan_keys=10,000 syn_keys=2,458 dns_keys=4,000 edges/bucket≤5,000  (29,107 pps)
+   20초: RSS    359 MB  flows=150,000 scan_keys=10,000 syn_keys=2,528 dns_keys=4,000 edges/bucket≤5,000  (23,357 pps)
+   30초: RSS    367 MB  flows=150,000 scan_keys=10,000 syn_keys=2,598 dns_keys=4,000 edges/bucket≤5,000  (21,490 pps)
+   40초: RSS    372 MB  flows=150,000 scan_keys=10,000 syn_keys=2,600 dns_keys=4,000 edges/bucket≤5,000  (20,701 pps)
+   50초: RSS    377 MB  flows=150,000 scan_keys=10,000 syn_keys=2,600 dns_keys=4,000 edges/bucket≤5,000  (19,444 pps)
+   60초: RSS    383 MB  flows=150,000 scan_keys=10,000 syn_keys=2,600 dns_keys=4,000 edges/bucket≤5,000  (18,808 pps)
+   70초: RSS    386 MB  flows=150,000 scan_keys=10,000 syn_keys=2,600 dns_keys=4,000 edges/bucket≤5,000  (18,341 pps)
+   80초: RSS    387 MB  flows=150,000 scan_keys=10,000 syn_keys=2,600 dns_keys=4,000 edges/bucket≤5,000  (18,059 pps)
+   90초: RSS    387 MB  flows=150,000 scan_keys=10,000 syn_keys=2,600 dns_keys=4,000 edges/bucket≤5,000  (17,790 pps)
+최대 RSS 387 MB (기준선 대비 +284 MB), 목표 ≤ 320 MB, 상한 400 MB → 통과
+health: {'edge_untracked': 7321592, 'detector_eviction': 3593586, 'flow_eviction': 6634800}
+경고 11,391건 발생, 탐지기 보관 0건, 쿨다운 테이블 3,800개

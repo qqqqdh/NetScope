@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .anomaly import Thresholds
-from .pipeline import Pipeline
+from .pipeline import Pipeline, percentiles
 from .sources.realtime import PacedSource, SimSource
 from .sources.sim import live_demo
 
@@ -30,11 +30,12 @@ STATIC = Path(__file__).parent / "static"
 class Client:
     def __init__(self, ws: WebSocket) -> None:
         self.ws = ws
-        self.snapshot: tuple[int, str] | None = None
+        self.snapshot: tuple | None = None    # (seq, msg, end)
+        self.pending_samples: list[float] = []  # 아직 보내지 않은 스냅샷들의 E2E 표본 (latest-wins로 덮여도 유지)
         self.alerts: asyncio.Queue = asyncio.Queue(maxsize=100)
         self.wake = asyncio.Event()
         self.sent_seq = 0
-        self.outstanding: deque = deque()     # (seq, 보낸 시각)
+        self.outstanding: deque = deque()     # (seq, 보낸 단조 시각, end, samples)
         self.closed = False
 
 
@@ -46,19 +47,25 @@ class Hub:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.slow_disconnects = 0
         self.ack_rtts: deque = deque(maxlen=1000)
+        self.freshness: deque = deque(maxlen=1000)     # ack 시각 − 스냅샷 최신 마감 초의 끝
+        self.e2e: deque = deque(maxlen=2000)           # ack 시각 − 표본 패킷 ingest_ts
 
     # ------------------------------------------------------------ 워커 스레드에서
-    def publish_threadsafe(self, seq: int, msg: str, alerts: list[dict]) -> None:
+    def publish_threadsafe(self, seq: int, msg: str, alerts: list[dict], end: int | None = None,
+                           samples: list[float] = ()) -> None:
         if self.loop is not None and not self.loop.is_closed():
-            self.loop.call_soon_threadsafe(self.publish, seq, msg, alerts)
+            self.loop.call_soon_threadsafe(self.publish, seq, msg, alerts, end, list(samples))
 
     # ------------------------------------------------------------ 이벤트 루프에서
-    def publish(self, seq: int, msg: str, alerts: list[dict]) -> None:
+    def publish(self, seq: int, msg: str, alerts: list[dict], end: int | None = None,
+                samples: list[float] = ()) -> None:
         encoded = [json.dumps({"type": "alert", "data": a}, ensure_ascii=False) for a in alerts]
         for c in list(self.clients):
             if c.closed:
                 continue
-            c.snapshot = (seq, msg)
+            c.snapshot = (seq, msg, end)
+            if len(c.pending_samples) < 50:
+                c.pending_samples.extend(samples)
             for text in encoded:
                 try:
                     c.alerts.put_nowait(text)
@@ -107,16 +114,22 @@ class Hub:
             if not await self._send(c, snap[1]):
                 return
             c.sent_seq = snap[0]
-            c.outstanding.append((snap[0], time.monotonic()))
+            samples, c.pending_samples = c.pending_samples, []
+            c.outstanding.append((snap[0], time.monotonic(), snap[2], samples))
 
     def on_ack(self, c: Client, seq: int) -> None:
-        now = time.monotonic()
+        """브라우저는 화면에 적용한 뒤 ack를 보낸다 → ack 시각 = 화면 반영 시각 (§9)."""
+        mono, wall = time.monotonic(), time.time()
         while c.outstanding and c.outstanding[0][0] <= seq:
-            s, sent = c.outstanding.popleft()
+            s, sent, end, samples = c.outstanding.popleft()
+            for ingest in samples:                  # 이 초들은 acked 스냅샷 이전에 포함됐다
+                self.e2e.append(wall - ingest)
             if s == seq:
-                self.ack_rtts.append(now - sent)
+                self.ack_rtts.append(mono - sent)
+                if end:
+                    self.freshness.append(wall - end)
 
-    async def serve(self, ws: WebSocket, hello: dict, latest: tuple[int, str] | None) -> None:
+    async def serve(self, ws: WebSocket, hello: dict, latest: tuple | None) -> None:
         await ws.accept()
         c = Client(ws)
         self.clients.add(c)
@@ -146,7 +159,8 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
                send_timeout: float = 5.0, max_unacked: int = 5,
                thresholds: Thresholds | None = None,
                allowlist: dict[str, list[str]] | None = None,
-               pcap: str | None = None, iface: str | None = None, bpf: str | None = None) -> FastAPI:
+               pcap: str | None = None, iface: str | None = None, bpf: str | None = None,
+               memory_budget_mb: float = 400.0) -> FastAPI:
     if mode not in ("sim", "pcap", "live"):
         raise ValueError(f"알 수 없는 mode: {mode!r} (sim | pcap | live)")
     if mode == "pcap":
@@ -171,7 +185,7 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
     async def lifespan(app: FastAPI):
         hub.loop = asyncio.get_running_loop()
         pipe = Pipeline(live=(mode == "live"), queue_max=queue_max, lateness=lateness,
-                        thresholds=thresholds, allowlist=allowlist)
+                        thresholds=thresholds, allowlist=allowlist, memory_budget_mb=memory_budget_mb)
         source = make_source(pipe)
         pipe.status_provider = lambda: {"mode": mode, "source_running": source.running,
                                         "source_finished": getattr(source, "finished", False),
@@ -207,9 +221,12 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
 
     @app.get("/api/status")
     def status():
+        # sync 핸들러는 스레드 풀에서 돌므로, 이벤트 루프가 append 중인 deque를 안전하게 복사한다
         st = app.state.pipe.status()
-        rtts = sorted(hub.ack_rtts)
-        st["ws_ack_rtt_p95"] = round(rtts[int(0.95 * (len(rtts) - 1))], 4) if rtts else None
+        rtt = percentiles(hub.ack_rtts)
+        st["ws_ack_rtt_p95"] = rtt["p95"] if rtt else None
+        st["latency"].update({"snapshot_freshness": percentiles(hub.freshness),
+                              "sampled_e2e": percentiles(hub.e2e), "ws_ack_rtt": rtt})
         return st
 
     @app.get("/api/snapshot")
@@ -236,7 +253,7 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):
         pipe = app.state.pipe
-        latest = (pipe.seq, pipe.latest_message) if pipe.latest_message else None
+        latest = (pipe.seq, pipe.latest_message, None) if pipe.latest_message else None
         hello = {"status": pipe.status(), "alerts": pipe.alerts(limit=50)}
         await hub.serve(ws, hello, latest)
 

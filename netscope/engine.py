@@ -6,6 +6,9 @@
 from __future__ import annotations
 
 import heapq
+import math
+import time
+from collections import deque
 from typing import Callable
 
 from .analyzer import TrafficAnalyzer
@@ -18,7 +21,7 @@ from .protocols import LocalNets
 
 class CoreEngine:
     def __init__(self, *, window: int = 60, lateness: float = 1.0, live: bool = False,
-                 max_flows: int = 150_000, max_edges: int = 5_000, edge_bucket: int = 5,
+                 max_flows: int = 100_000, max_edges: int = 5_000, edge_bucket: int = 5,
                  local_nets: LocalNets | None = None) -> None:
         self.health = Health(window)
         self.clock = Watermark(lateness=lateness, live=live)
@@ -31,6 +34,11 @@ class CoreEngine:
         self.ingested = 0
         self._buf: list = []        # 재정렬 버퍼: (ts, seq, pkt)
         self._seq = 0
+        # 지연 측정 (§9). 벽시계는 측정에만 쓰고 분석 결과에는 영향을 주지 않는다.
+        self.sample_every = 100
+        self.processed = 0
+        self.processing_latency: deque = deque(maxlen=2000)   # 처리 완료 − ingest_ts
+        self.e2e_samples: dict[int, list[float]] = {}         # 초 → 표본 패킷의 ingest_ts
 
     def _now(self, pkt: Packet) -> float:
         return self.clock.max_event if self.clock.max_event is not None else pkt.ts
@@ -71,6 +79,26 @@ class CoreEngine:
         for fn in self.packet_listeners:
             fn(pkt, flow)
         self._dispatch(events)
+        self.processed += 1
+        # ingested가 아니라 processed로 표본을 고른다: 처리는 초 마감 때 묶음으로 일어나므로
+        # 그동안 ingested는 변하지 않는다.
+        if pkt.ingest_ts and self.processed % self.sample_every == 0:
+            self.processing_latency.append(time.time() - pkt.ingest_ts)
+            samples = self.e2e_samples.setdefault(math.floor(pkt.ts), [])
+            if len(samples) < 5:
+                samples.append(pkt.ingest_ts)
+
+    def take_e2e_samples(self, until: int) -> list[float]:
+        """마감된 초(< until)의 표본을 꺼낸다. 그 초가 처음 들어간 스냅샷과 함께 보낸다."""
+        out: list[float] = []
+        for sec in [s for s in self.e2e_samples if s < until]:
+            out += self.e2e_samples.pop(sec)
+        return out
+
+    def sizes(self) -> dict:
+        """구조별 항목 수 (메모리 상한 확인용, §6)."""
+        return {"flows": len(self.flows), "reorder_buffer": len(self._buf),
+                **self.analyzer.stats()}
 
     def idle_advance(self, wall_now: float) -> list[int]:
         """Live 모드, 큐가 비었을 때만 호출한다."""

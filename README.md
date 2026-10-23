@@ -52,7 +52,8 @@ python -m netscope.replay capture.pcap --alerts-json alerts.json   # 서버 없�
 python -m netscope.replay --generate attacks:100 attacks.pcap      # 시뮬레이터로 테스트용 PCAP 생성
 ```
 
-출력에는 단계별 처리량이 나온다. 개발 PC 측정치(시뮬레이터 PCAP 3만 패킷): 파싱 약 82,000 pps / 분석 약 29,000 pps.
+출력에는 단계별 처리량이 나온다. 개발 PC 측정치(시뮬레이터 PCAP 3만 패킷): 파싱 약 82,000 pps / 분석 약 29,000~49,000 pps.
+분석 처리량은 실행마다 편차가 커서(한 번 측정 29k, 워밍업 후 측정 49k) 한 번 잰 값을 그대로 쓰지 않는다. 분석 단계에는 두드러진 병목이 없고(프로파일상 Flow·집계·탐지에 고르게 분산) 패킷당 약 20µs의 순수 Python 비용이다.
 파서는 struct 기반으로 직접 구현했다. Scapy 파서(약 1,100 pps)는 기준 구현으로 남겨 결과가 같은지 테스트로 확인한다.
 
 ## 테스트와 평가
@@ -64,6 +65,17 @@ python -m netscope.evaluate --seeds 1-20     # 평가 시드 (튜닝은 100-109)
 
 평가 결과(`bench/results/`)는 시뮬레이터 기준이다. 시뮬레이터 공격은 임계값보다 확실히 강한 범위라
 실제 환경 성능을 뜻하지 않는다. 공개 PCAP 데이터셋 평가는 4단계에서 추가한다.
+
+## 벤치마크
+
+```bash
+python bench/e4_memory.py --pps 100000 --seconds 90 --workload spread   # 최악 부하 메모리
+python bench/e5_threshold_sweep.py --seeds 100-109                       # 임계값 민감도 (PR 곡선 데이터)
+python bench/latency.py --seconds 40                                     # 지연 지표 3종
+```
+
+결과 요약: [bench/results/RESULTS.md](bench/results/RESULTS.md)
+— 최악 부하 메모리 306~361MB(상한 400MB), 표본 종단 지연 P95 1.99초, 약한 공격 포함 시 기본 임계값의 Recall 0.43~0.67.
 
 ## 라이선스
 
