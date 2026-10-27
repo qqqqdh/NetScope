@@ -14,6 +14,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--pcap", help="pcap 모드의 입력 파일 (pcap/pcapng)")
     ap.add_argument("--iface", help="live 모드의 네트워크 인터페이스 (생략 시 기본)")
     ap.add_argument("--bpf", help='live 모드의 BPF 필터 (예: "ip and not port 22")')
+    ap.add_argument("--live-parser", choices=["fast", "scapy"],
+                    help="live 패킷 해석 방식. fast(기본): 원시 바이트+빠른 파서, scapy: 대체 경로(느림)")
     ap.add_argument("--host", help="기본 127.0.0.1. 인증이 없으므로 로컬 전용 권장")
     ap.add_argument("--port", type=int)
     ap.add_argument("--seed", type=int)
@@ -29,7 +31,7 @@ def resolve(argv=None):
     args = build_parser().parse_args(argv)
     cfg = load_config(args.config)
     for key in ("mode", "host", "port", "seed", "speed", "attack_interval", "lateness",
-                "pcap", "iface", "bpf"):
+                "pcap", "iface", "bpf", "live_parser"):
         value = getattr(args, key)
         if value is not None:
             setattr(cfg, key, value)
@@ -53,7 +55,7 @@ def main(argv=None) -> None:
     app = create_app(mode=cfg.mode, seed=cfg.seed, speed=cfg.speed, attack_interval=cfg.attack_interval,
                      lateness=cfg.lateness, queue_max=cfg.queue_max, thresholds=cfg.thresholds,
                      allowlist=cfg.allowlist, pcap=cfg.pcap or None, iface=cfg.iface or None,
-                     bpf=cfg.bpf or None)
+                     bpf=cfg.bpf or None, live_parser=cfg.live_parser)
     print(f"NetScope → http://{cfg.host}:{cfg.port}  (모드: {cfg.mode}, 배속 {cfg.speed}x)")
     try:
         uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="warning")

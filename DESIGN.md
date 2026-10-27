@@ -319,7 +319,9 @@ v2의 "Space-Saving으로 축출하고 other에 합산"은 성립하지 않는�
   - 지원: 클래식 pcap(µs/ns), pcapng(EPB, `if_tsresol`), 링크 타입 Ethernet·VLAN/QinQ·Raw IP·Linux SLL/SLL2·Loopback, IPv4(옵션, 조각), IPv6(확장 헤더, 조각), TCP·UDP·ICMP·ICMPv6·ARP.
   - 그 밖의 링크 타입 프레임만 Scapy로 넘긴다. Scapy 파서(`sources/parse.py`)는 **기준 구현**으로 남겨, 23가지 프레임·3가지 링크 타입·pcapng·나노초 pcap에서 두 결과가 같음을 테스트로 고정했다.
   - 결과: 파싱 **82,000 pps (약 72배)**. 병목이 분석 단계(약 29,000 pps)로 옮겨 갔다.
-  - 한계: Live는 아직 Scapy가 패킷을 분해하므로 같은 병목(약 1~2k pps 예상)이 남아 있다. 원시 소켓 + 빠른 파서로 바꾸는 것은 Npcap 환경에서 검증할 수 있을 때 진행한다.
+  - **Live에도 적용 (Npcap 설치 후 검증)**: 처음 LiveSource는 `AsyncSniffer`로 Scapy가 모든 패킷을 분해했다. Wi-Fi 실측에서 초당 약 1,100개에서 막혀, 같은 부하에서 NIC 카운터 대비 **81.9%만 캡처**했다(18%를 드라이버 단계에서 잃음 — NetScope의 `queue_drop`에도 잡히지 않는 손실). 캡처 소켓의 `recv_raw()`로 원시 바이트만 받아 fastparse로 처리하도록 바꾼 뒤 **100%** 캡처했다. Scapy 경로는 `--live-parser scapy`로 남겨 둔다.
+  - 측정 방법 검증: 부하가 없을 때 캡처 수와 NIC 카운터의 비율이 1.0003으로, 비교 방법 자체는 정확하다.
+  - 남은 한계: 드라이버 단계 손실은 NetScope가 직접 볼 수 없다. Npcap의 `pcap_stats`(ps_drop)를 읽어 health reason으로 노출하는 것은 다음 과제다.
 - **검증 방법 (tshark 대체)**: 이 PC에 tshark가 없어 §7의 "tshark 통계 ±1%" 대신 다음으로 검증했다.
   1. 왕복: 시뮬레이터 패킷 → 직접 만든 PCAP 기록기 → 파서 → 엔진이, 시뮬레이터 패킷을 바로 넣은 결과(패킷, 경고, 합계)와 완전히 같다.
   2. 독립 집계기: Scapy와 무관한 최소 pcap 집계기의 레코드 수·바이트 합이 파서 결과와 같다.

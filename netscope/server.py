@@ -160,6 +160,7 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
                thresholds: Thresholds | None = None,
                allowlist: dict[str, list[str]] | None = None,
                pcap: str | None = None, iface: str | None = None, bpf: str | None = None,
+               live_parser: str = "fast",
                memory_budget_mb: float = 400.0) -> FastAPI:
     if mode not in ("sim", "pcap", "live"):
         raise ValueError(f"알 수 없는 mode: {mode!r} (sim | pcap | live)")
@@ -179,7 +180,7 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
             return PacedSource(iter_pcap(pcap), pipe.try_offer, speed=speed, retry_on_full=True,
                                on_eof=pipe.request_flush, name="netscope-pcap")
         from .sources.live import LiveSource
-        return LiveSource(pipe.offer, iface=iface, bpf=bpf)
+        return LiveSource(pipe.offer, iface=iface, bpf=bpf, parser=live_parser)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

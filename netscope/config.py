@@ -28,6 +28,7 @@ class Config:
     pcap: str = ""
     iface: str = ""
     bpf: str = ""
+    live_parser: str = "fast"
     thresholds: Thresholds = field(default_factory=Thresholds)
     allowlist: dict[str, list[str]] = field(default_factory=dict)
 
@@ -37,7 +38,7 @@ _SECTIONS = {
     "server": ("mode", "host", "port"),
     "simulator": ("seed", "speed", "attack_interval"),
     "engine": ("lateness", "queue_max"),
-    "capture": ("pcap", "iface", "bpf"),
+    "capture": ("pcap", "iface", "bpf", "live_parser"),
 }
 
 

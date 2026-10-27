@@ -42,8 +42,10 @@ python -m netscope --mode live --iface "Wi-Fi" --bpf "ip"         # 실제 캡�
 ```
 
 - pcap과 pcapng를 모두 읽는다. PCAP 재생은 큐가 차면 패킷을 버리지 않고 기다리므로, 기계 속도와 상관없이 결과가 같다.
-- **live는 아직 실제 네트워크에서 검증하지 않았다.** Windows는 [Npcap](https://npcap.com) 설치와 관리자 권한, Linux는 root(또는 CAP_NET_RAW)가 필요하다.
-  패킷 분해를 Scapy가 하므로 처리량이 초당 1~2천 패킷 수준으로 제한될 것으로 예상한다.
+- live는 Windows 11 + Npcap 1.90 + Wi-Fi에서 검증했다. Windows는 [Npcap](https://npcap.com) 설치가 필요하고
+  (설치 시 '관리자 전용' 옵션을 켜지 않으면 관리자 권한 없이 캡처 가능), Linux는 root(또는 CAP_NET_RAW)가 필요하다.
+- 캡처 소켓에서 원시 바이트를 받아 빠른 파서로 처리한다(`--live-parser fast`, 기본). 같은 부하에서 NIC 카운터 대비
+  캡처율이 빠른 파서 **100%**, Scapy 분해 경로(`--live-parser scapy`) **81.9%** 였다(`bench/results/live_capture.txt`).
 
 ### 오프라인 분석
 
