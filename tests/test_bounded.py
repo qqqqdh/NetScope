@@ -26,6 +26,27 @@ def test_space_saving_bounds_hold_and_heavy_hitter_survives_flood():
     assert len(ss) == 100
 
 
+def test_lru_keys_evicts_least_recent():
+    from netscope.bounded import LRUKeys, make_key_table
+
+    lru = LRUKeys(2)
+    lru.touch("a", 5)
+    lru.touch("b")
+    lru.touch("a")                          # a를 최근으로
+    assert lru.touch("c") == "b" and "b" not in lru and len(lru) == 2
+    assert lru.lower_bound("a") == 6 and lru.error("a") == 0 and lru.evictions == 1
+    assert isinstance(make_key_table("space_saving", 3), SpaceSaving)
+    assert isinstance(make_key_table("lru", 3), LRUKeys)
+
+
+def test_unknown_key_policy_rejected():
+    import pytest
+
+    from netscope.bounded import make_key_table
+    with pytest.raises(ValueError):
+        make_key_table("fifo", 3)
+
+
 def test_hll_error_within_10_percent():
     for n in (1_000, 10_000, 100_000):
         h = HyperLogLog()

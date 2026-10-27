@@ -88,6 +88,59 @@ class SpaceSaving:
         self._counts.pop(key, None)
 
 
+class LRUKeys:
+    """SpaceSaving과 같은 인터페이스의 LRU 키 테이블 (E6 비교 실험용).
+
+    가장 오래 접근하지 않은 키를 축출한다. 물려받는 값이 없으므로 error는 항상 0이다.
+    """
+
+    def __init__(self, capacity: int) -> None:
+        from collections import OrderedDict
+
+        self.capacity = capacity
+        self._counts: "OrderedDict" = OrderedDict()
+        self.evictions = 0
+
+    def __len__(self) -> int:
+        return len(self._counts)
+
+    def __contains__(self, key) -> bool:
+        return key in self._counts
+
+    def touch(self, key, inc: int = 1):
+        evicted = None
+        if key in self._counts:
+            self._counts.move_to_end(key)
+        elif len(self._counts) >= self.capacity:
+            evicted, _ = self._counts.popitem(last=False)
+            self.evictions += 1
+        self._counts[key] = self._counts.get(key, 0) + inc
+        return evicted
+
+    def count(self, key) -> int:
+        return self._counts.get(key, 0)
+
+    def error(self, key) -> int:
+        return 0
+
+    def lower_bound(self, key) -> int:
+        return self.count(key)
+
+    def items(self):
+        return sorted(((k, c, 0) for k, c in self._counts.items()), key=lambda t: -t[1])
+
+    def remove(self, key) -> None:
+        self._counts.pop(key, None)
+
+
+def make_key_table(policy: str, capacity: int):
+    if policy == "space_saving":
+        return SpaceSaving(capacity)
+    if policy == "lru":
+        return LRUKeys(capacity)
+    raise ValueError(f"알 수 없는 키 정리 정책: {policy!r} (space_saving | lru)")
+
+
 class HyperLogLog:
     """p=8 → 256 레지스터(256B), 표준 오차 약 1.04/√256 ≈ 6.5%."""
 

@@ -1,0 +1,8 @@
+잡음    0×상한/초: space_saving=3/3  lru=3/3
+잡음  0.5×상한/초: space_saving=3/3  lru=3/3
+잡음    1×상한/초: space_saving=3/3  lru=3/3
+잡음    2×상한/초: space_saving=3/3  lru=3/3
+잡음    3×상한/초: space_saving=0/3  lru=0/3
+잡음    5×상한/초: space_saving=0/3  lru=0/3
+잡음   10×상한/초: space_saving=0/3  lru=0/3
+저장: bench\results\e6_eviction.csv

@@ -12,7 +12,7 @@ import math
 from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass
 
-from .bounded import HybridCardinality, SpaceSaving
+from .bounded import HybridCardinality, make_key_table
 from .engine import CoreEngine
 from .flows import FlowEvent
 from .models import Alert, Packet, int_to_ip
@@ -28,6 +28,7 @@ def _lower(conf: str, steps: int = 1) -> str:
 @dataclass
 class Thresholds:
     cooldown: float = 30.0
+    key_policy: str = "space_saving"   # 탐지기 키 테이블 축출 정책: space_saving | lru (E6)
     # port_scan
     scan_window: int = 10
     scan_ports: int = 20
@@ -83,7 +84,7 @@ class _ScanState:
 class PortScanDetector:
     def __init__(self, owner: "AnomalyDetector") -> None:
         self.o, self.t = owner, owner.t
-        self.keys = SpaceSaving(self.t.scan_keys)
+        self.keys = make_key_table(self.t.key_policy, self.t.scan_keys)
         self.states: dict = {}
         self.hot: set = set()
 
@@ -171,7 +172,7 @@ class _Svc:
 class SynDetector:
     def __init__(self, owner: "AnomalyDetector") -> None:
         self.o, self.t = owner, owner.t
-        self.keys = SpaceSaving(self.t.syn_keys)
+        self.keys = make_key_table(self.t.key_policy, self.t.syn_keys)
         self.states: dict = {}
         self.active: set = set()
 
@@ -350,7 +351,7 @@ class _DnsState:
 class DnsFloodDetector:
     def __init__(self, owner: "AnomalyDetector") -> None:
         self.o, self.t = owner, owner.t
-        self.keys = SpaceSaving(self.t.dns_keys)
+        self.keys = make_key_table(self.t.key_policy, self.t.dns_keys)
         self.states: dict = {}
         self.hot: set = set()
 
