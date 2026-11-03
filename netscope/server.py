@@ -190,7 +190,8 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
             if accepted:
                 app.state.processes.record(packet)
             return accepted
-        return LiveSource(offer, iface=iface, bpf=bpf, parser=live_parser)
+        return LiveSource(offer, iface=iface, bpf=bpf, parser=live_parser,
+                          on_stats=pipe.report_capture_stats)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

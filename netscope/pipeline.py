@@ -62,6 +62,9 @@ class Pipeline:
         self.offered = 0
         self._drops = 0
         self._drops_reported = 0
+        # 캡처 드라이버 통계 (live 소스 스레드가 기록, 워커가 health로 옮김)
+        self.capture = {"recv": 0, "drop": 0, "ifdrop": 0}
+        self._capture_drop_reported = 0
         self._rate: deque = deque()                  # (wall, offered)
         self._flush = threading.Event()
         self._stop = threading.Event()
@@ -87,6 +90,10 @@ class Pipeline:
             return False
         self.offered += 1
         return True
+
+    def report_capture_stats(self, recv: int, drop: int, ifdrop: int) -> None:
+        """live 소스가 드라이버 누적 통계를 알린다. 드라이버 단계 손실은 queue_drop에 잡히지 않는다."""
+        self.capture = {"recv": recv, "drop": drop, "ifdrop": ifdrop}
 
     def request_flush(self) -> None:
         """입력 끝(PCAP 등): 큐를 비운 뒤 남은 초를 모두 마감하게 한다."""
@@ -142,10 +149,17 @@ class Pipeline:
                 self._publish()
 
     def _sync_drops(self) -> None:
+        now = self.engine.clock.max_event or time.time()
         d = self._drops - self._drops_reported
         if d:
             self._drops_reported += d
-            self.engine.health.record("queue_drop", self.engine.clock.max_event or time.time(), d)
+            self.engine.health.record("queue_drop", now, d)
+        cap = self.capture
+        lost = cap["drop"] + cap["ifdrop"]
+        d = lost - self._capture_drop_reported
+        if d > 0:
+            self._capture_drop_reported = lost
+            self.engine.health.record("capture_drop", now, d)
 
     def _publish(self) -> None:
         new = [a.to_dict() for a in self.detector.drain()]
@@ -188,7 +202,8 @@ class Pipeline:
     def status(self) -> dict:
         return {"pps": self.pps(), "uptime": round(time.time() - self.started_at, 1),
                 "queue_size": self.queue.qsize(), "offered": self.offered,
-                "queue_drops": self._drops, "seq": self.seq, "rss_mb": self._cached["rss_mb"],
+                "queue_drops": self._drops, "capture": dict(self.capture),
+                "seq": self.seq, "rss_mb": self._cached["rss_mb"],
                 "memory_budget_mb": self.memory_budget_mb, "structures": self._cached["structures"],
                 "latency": dict(self._cached["latency"]), **self.status_provider()}
 

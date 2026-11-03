@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from typing import Callable
 
 from ..models import Packet
@@ -23,12 +24,47 @@ class LiveCaptureError(RuntimeError):
     pass
 
 
+def capture_stats(sock) -> tuple[int, int, int] | None:
+    """libpcap/Npcap의 (받음, 드라이버 손실, 인터페이스 손실) 누적값. 없으면 None.
+
+    Scapy는 pcap_stats를 감싸지 않아 내부 바인딩(winpcapy)으로 직접 부른다.
+    Linux 기본 경로(네이티브 소켓)에는 pcap 핸들이 없어 None이다.
+    """
+    handle = getattr(getattr(sock, "pcap_fd", None), "pcap", None)
+    if handle is None:
+        return None
+    try:
+        from ctypes import byref
+
+        from scapy.libs.winpcapy import pcap_stat, pcap_stats
+
+        st = pcap_stat()
+        if pcap_stats(handle, byref(st)) != 0:
+            return None
+        return int(st.ps_recv), int(st.ps_drop), int(st.ps_ifdrop)
+    except Exception:
+        return None
+
+
+def _linktype(sock, cls) -> int:
+    """pcap 소켓이면 datalink(), Linux 네이티브 소켓이면 계층 클래스에서 추론. 모르면 -1."""
+    fd = getattr(sock, "pcap_fd", None)
+    if fd is not None:
+        return fd.datalink()
+    from scapy.layers.l2 import Ether
+
+    return 1 if cls is Ether else -1
+
+
 class LiveSource:
     def __init__(self, offer: Callable[[Packet], bool], iface: str | None = None,
-                 bpf: str | None = None, parser: str = "fast") -> None:
+                 bpf: str | None = None, parser: str = "fast",
+                 on_stats: Callable[[int, int, int], None] | None = None) -> None:
         if parser not in ("fast", "scapy"):
             raise ValueError("parser는 fast 또는 scapy")
         self.offer, self.iface, self.bpf, self.parser = offer, iface, bpf, parser
+        self.on_stats = on_stats          # (recv, drop, ifdrop) 누적값을 1초마다 알린다
+        self.stats: tuple[int, int, int] | None = None
         self._sniffer = None
         self._sock = None
         self._thread: threading.Thread | None = None
@@ -76,10 +112,21 @@ class LiveSource:
         self._thread = threading.Thread(target=self._loop, name="netscope-live", daemon=True)
         self._thread.start()
 
+    def _report_stats(self) -> None:
+        st = capture_stats(self._sock)
+        if st is not None:
+            self.stats = st
+            if self.on_stats is not None:
+                self.on_stats(*st)
+
     def _loop(self) -> None:
         sock = self._sock
-        linktype = sock.pcap_fd.datalink()
+        linktype = None
+        next_stats = time.monotonic() + 1.0
         while not self._stop.is_set():
+            if time.monotonic() >= next_stats:          # 소켓을 쓰는 스레드에서만 통계를 읽는다
+                self._report_stats()
+                next_stats += 1.0
             try:
                 cls, data, ts = sock.recv_raw()      # 약 0.1초마다 타임아웃(None) → 정지 신호 확인
             except Exception:
@@ -88,13 +135,16 @@ class LiveSource:
                 raise
             if data is None:
                 continue
-            pkt = parse_frame(data, linktype, float(ts), len(data))
+            if linktype is None:
+                linktype = _linktype(sock, cls)
+            pkt = parse_frame(data, linktype, float(ts), len(data)) if linktype >= 0 else NotImplemented
             if pkt is NotImplemented:                # 빠른 파서가 모르는 링크 타입 → Scapy
                 self.scapy_fallback += 1
                 sp = cls(data)
                 sp.time = ts
                 pkt = to_packet(sp)
             self._deliver(pkt)
+        self._report_stats()                           # 정지 직전 마지막 통계
 
     def stop(self, timeout: float = 2.0) -> None:
         if self.parser == "scapy":

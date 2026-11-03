@@ -10,7 +10,7 @@
     dns_flood: "DNS 폭주", traffic_spike: "트래픽 급증"
   };
   const reasonLabels = {
-    queue_drop: "패킷 손실", backlog: "처리 지연",
+    queue_drop: "패킷 손실", capture_drop: "드라이버 손실", backlog: "처리 지연",
     late_drop: "늦은 패킷 폐기", future_drop: "시계 오차",
     flow_eviction: "Flow 축출", edge_untracked: "엣지 상한",
     detector_eviction: "탐지 상태 축출", unidirectional: "단방향 캡처",

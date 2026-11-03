@@ -6,6 +6,7 @@ from collections import defaultdict
 
 HINTS = {
     "queue_drop": "BPF 필터로 수집 범위를 줄이거나 큐 크기를 늘리기",
+    "capture_drop": "캡처 드라이버가 패킷을 버림(NetScope에 도달 전). BPF 필터로 범위를 줄이거나 CPU 부하 확인",
     "backlog": "분석기가 입력 속도를 따라가지 못함. 필터 적용",
     "late_drop": "--lateness 늘리기",
     "future_drop": "시스템 시계나 캡처 장비 시계 확인",

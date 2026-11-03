@@ -38,10 +38,17 @@ def main() -> None:
     ap.add_argument("--bpf", default=None)
     ap.add_argument("--seconds", type=float, default=20)
     ap.add_argument("--parser", choices=["fast", "scapy"], default="fast")
+    ap.add_argument("--slow-ms", type=float, default=0,
+                    help="검증용: 패킷마다 일부러 지연을 넣어 드라이버 단계 손실을 일으킨다")
     a = ap.parse_args()
 
     pipe = Pipeline(live=True)
-    src = LiveSource(pipe.offer, iface=a.iface, bpf=a.bpf, parser=a.parser)
+    offer = pipe.offer
+    if a.slow_ms:
+        def offer(p, _o=pipe.offer, _d=a.slow_ms / 1000):
+            time.sleep(_d)
+            return _o(p)
+    src = LiveSource(offer, iface=a.iface, bpf=a.bpf, parser=a.parser, on_stats=pipe.report_capture_stats)
     pipe.start()
     src.start()
     time.sleep(0.5)                               # 스니퍼 준비 대기
@@ -60,6 +67,7 @@ def main() -> None:
         "captured": src.captured, "skipped_non_ip": src.skipped,
         "capture_pps": round(src.captured / elapsed, 1),
         "queue_drops": pipe._drops, "processed": eng.processed,
+        "driver_stats": src.stats, "capture_drop_health": eng.health.totals.get("capture_drop", 0),
         "window_captured": cap1 - cap0,
         "window_nic_packets": (nic1 - nic0) if nic0 is not None and nic1 is not None else None,
         "window_capture_ratio": round((cap1 - cap0) / (nic1 - nic0), 4) if nic0 and nic1 and nic1 > nic0 else None,
