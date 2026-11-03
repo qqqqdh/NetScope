@@ -9,3 +9,6 @@ dist/
 *.log
 out.txt
 err.txt
+.test-tmp/
+*.sqlite3
+*.sqlite3-journal

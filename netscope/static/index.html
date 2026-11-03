@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#09121f">
   <title>NetScope · 실시간 트래픽 분석</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/practical.css">
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
   <script defer src="/static/app.js"></script>
+  <script defer src="/static/practical.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -47,6 +49,18 @@
       <section class="table-grid">
         <article class="panel"><div class="panel-head"><div><p class="eyebrow">상위 통신 호스트</p><h2>통신량 상위 호스트</h2></div></div><div class="table-scroll"><table><thead><tr><th>IP 주소</th><th>구분</th><th>통신량</th><th>상대 IP</th></tr></thead><tbody id="talkerRows"><tr><td colspan="4" class="empty">데이터 대기 중</td></tr></tbody></table></div></article>
         <article id="candidatePanel" class="panel"><div class="panel-head"><div><p class="eyebrow">연결 추정치</p><h2>추적 밖 대형 연결 후보(≈)</h2></div></div><div class="table-scroll"><table><thead><tr><th>출발지</th><th>목적지</th><th>추정 통신량</th></tr></thead><tbody id="candidateRows"><tr><td colspan="3" class="empty">후보 없음</td></tr></tbody></table></div></article>
+      </section>
+      <section class="panel practical-panel" aria-labelledby="processTitle">
+        <div class="panel-head"><div><p class="eyebrow">어떤 프로그램이 통신하나요?</p><h2 id="processTitle">프로세스별 통신량 (추정)</h2></div><span class="panel-note">실제 캡처 · 상위 20개</span></div>
+        <p id="processNote" class="practical-note" role="status">연결 정보를 확인하고 있습니다.</p>
+        <div class="table-scroll"><table><thead><tr><th>프로그램</th><th>PID</th><th>송신 누적</th><th>수신 누적</th><th>현재 소켓 수</th></tr></thead><tbody id="processRows"><tr><td colspan="5" class="empty">데이터 대기 중</td></tr></tbody></table></div>
+      </section>
+      <section class="panel practical-panel" aria-labelledby="historyTitle">
+        <div class="panel-head"><div><p class="eyebrow">재시작 후에도 남는 기록</p><h2 id="historyTitle">통계·경고 이력</h2></div>
+          <div class="history-controls"><label>종류 <select id="historyKind"><option value="stats">통계</option><option value="alerts">경고</option></select></label><label>모드 <select id="historyMode"><option value="">전체</option><option value="live">LIVE</option><option value="sim">SIM</option><option value="pcap">PCAP</option></select></label><button id="historyRefresh" class="control-button" type="button">새로고침</button><a id="historyDownload" class="control-button" href="/api/history?format=csv&amp;limit=10000">CSV 다운로드</a></div>
+        </div>
+        <p id="historyNote" class="practical-note" role="status">이력 저장 상태를 확인하고 있습니다.</p>
+        <div class="table-scroll"><table><thead id="historyHead"></thead><tbody id="historyRows"></tbody></table></div>
       </section>
     </main>
   </div>

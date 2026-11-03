@@ -26,6 +26,41 @@ python -m netscope --speed 3 --attack-interval 20    # 빠른 데모
 python -m netscope --config netscope.example.toml    # 설정 파일 사용
 ```
 
+### 프로그램별 통신량과 기록 보기
+
+실제 캡처를 실행한 뒤 `http://127.0.0.1:8000`의 아래쪽 패널을 확인한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m netscope --mode live --iface "Wi-Fi"
+```
+
+- **프로세스별 통신량(추정)**: 프로그램 이름·PID, 이번 실행에서 대응한 송수신 누적 바이트,
+  현재 소켓 수를 보여 준다. 상위 20개를 표시하며 패킷 헤더 길이를 포함한다.
+  `psutil`로 OS 연결 표를 1초마다 읽어 패킷의 주소·포트와 대조한다.
+  짧은 연결, 권한 제한, 공유 소켓, 다른 장치의 패킷은 대응하지 못할 수 있다.
+  대응하지 못한 바이트를 별도 표시하며, 모호한 공유 소켓은 임의로 배정하지 않는다.
+  메모리 상한은 프로세스 식별자 512개다. 로컬 양 끝에 프로세스가 있으면 송신 쪽에 배정한다.
+  시뮬레이터·PCAP에서는 이 기능을 사용하지 않는다. 일시정지·재개 시 누적값은 유지되고 서버 재시작 시 초기화된다.
+- **통계·경고 이력**: 통계는 발행되는 스냅샷에서 약 10초마다, 경고는 발생할 때 저장한다.
+  종류·모드별 조회 및 CSV 다운로드를 지원한다. LIVE/SIM/PCAP과 실행 식별자를 함께 저장해
+  재시작하거나 모드를 바꿔도 기록을 구분한다. 최근 60초 통신량은 겹치는 구간이므로 여러 행을 합산하지 않는다.
+- CLI 실행은 현재 폴더의 `netscope-history.sqlite3`에 기본 저장한다. 패킷 원문과 프로세스별 누적값은 저장하지 않는다.
+  기록에는 경고의 IP 등 메타데이터가 포함될 수 있다. 저장 시 최근 7일만 유지하며 통계 10만 건·경고 1만 건으로 제한한다.
+  저장 지연으로 큐가 차거나 디스크 오류가 나면 수집은 계속하고 이력 패널에 저장 누락을 표시한다.
+  화면은 최신 50건, CSV는 최신 1만 건을 제공한다. `create_app()`을 직접 쓰는 경우 `history="경로"`로 저장을 켠다.
+
+```powershell
+# 다른 파일에 저장
+.\.venv\Scripts\python.exe -m netscope --mode live --iface "Wi-Fi" --history "my-history.sqlite3"
+# 저장 끄기 (PowerShell에서도 확실하게 빈 값 전달)
+.\.venv\Scripts\python.exe -m netscope --history=
+```
+
+업데이트 후에는 실행 중인 서버를 `Ctrl+C`로 종료하고 다시 실행한다.
+의존성 설치는 `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+API: `/api/processes`, `/api/history?kind=stats&mode=live`,
+`/api/history?kind=alerts&format=csv&limit=10000`.
+
 설정 파일(`netscope.example.toml` 참고)로 서버 옵션, 탐지 임계값, 탐지기별 허용 목록(CIDR)을 지정한다.
 CLI 인자가 설정 파일보다 우선하고, 알 수 없는 키(오타)는 오류로 알린다.
 
@@ -61,7 +96,7 @@ python -m netscope.replay --generate attacks:100 attacks.pcap      # 시뮬레�
 ## 테스트와 평가
 
 ```bash
-python -m pytest -q                          # 140개, 약 1분
+python -m pytest -q
 python -m netscope.evaluate --seeds 1-20     # 평가 시드 (튜닝은 100-109)
 ```
 
@@ -104,4 +139,6 @@ MIT
 | `replay.py` | PCAP 오프라인 분석 CLI |
 | `evaluate.py` | Precision/Recall, Wilson 신뢰구간 |
 | `config.py` | TOML 설정 로딩, 외부 노출 경고 |
+| `processes.py` | OS 연결 표와 live 패킷 대조, 프로세스별 통신량 추정 |
+| `history.py` | 통계·경고 SQLite 저장, 보관 상한·오류 상태 |
 | `static/` | 대시보드 (Chart.js, D3) |

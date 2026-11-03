@@ -29,6 +29,7 @@ class Config:
     iface: str = ""
     bpf: str = ""
     live_parser: str = "fast"
+    history: str = "netscope-history.sqlite3"
     thresholds: Thresholds = field(default_factory=Thresholds)
     allowlist: dict[str, list[str]] = field(default_factory=dict)
 
@@ -39,6 +40,7 @@ _SECTIONS = {
     "simulator": ("seed", "speed", "attack_interval"),
     "engine": ("lateness", "queue_max"),
     "capture": ("pcap", "iface", "bpf", "live_parser"),
+    "storage": ("history",),
 }
 
 

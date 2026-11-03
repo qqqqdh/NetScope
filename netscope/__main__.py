@@ -12,6 +12,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--mode", choices=["sim", "pcap", "live"],
                     help="sim: 시뮬레이터, pcap: 파일 재생, live: 실제 캡처(Npcap/root 필요)")
     ap.add_argument("--pcap", help="pcap 모드의 입력 파일 (pcap/pcapng)")
+    ap.add_argument("--history", help='SQLite 이력 파일 (기본 netscope-history.sqlite3, 빈 문자열이면 끔)')
     ap.add_argument("--iface", help="live 모드의 네트워크 인터페이스 (생략 시 기본)")
     ap.add_argument("--bpf", help='live 모드의 BPF 필터 (예: "ip and not port 22")')
     ap.add_argument("--live-parser", choices=["fast", "scapy"],
@@ -31,7 +32,7 @@ def resolve(argv=None):
     args = build_parser().parse_args(argv)
     cfg = load_config(args.config)
     for key in ("mode", "host", "port", "seed", "speed", "attack_interval", "lateness",
-                "pcap", "iface", "bpf", "live_parser"):
+                "pcap", "iface", "bpf", "live_parser", "history"):
         value = getattr(args, key)
         if value is not None:
             setattr(cfg, key, value)
@@ -55,7 +56,7 @@ def main(argv=None) -> None:
     app = create_app(mode=cfg.mode, seed=cfg.seed, speed=cfg.speed, attack_interval=cfg.attack_interval,
                      lateness=cfg.lateness, queue_max=cfg.queue_max, thresholds=cfg.thresholds,
                      allowlist=cfg.allowlist, pcap=cfg.pcap or None, iface=cfg.iface or None,
-                     bpf=cfg.bpf or None, live_parser=cfg.live_parser)
+                     bpf=cfg.bpf or None, live_parser=cfg.live_parser, history=cfg.history)
     print(f"NetScope → http://{cfg.host}:{cfg.port}  (모드: {cfg.mode}, 배속 {cfg.speed}x)")
     try:
         uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="warning")

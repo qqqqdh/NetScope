@@ -9,18 +9,23 @@ WebSocket 송신 정책 (클라이언트별):
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
+import sqlite3
 import time
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .anomaly import Thresholds
 from .pipeline import Pipeline, percentiles
+from .history import HistoryStore
+from .processes import ProcessMonitor
 from .sources.realtime import PacedSource, SimSource
 from .sources.sim import live_demo
 
@@ -161,7 +166,7 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
                allowlist: dict[str, list[str]] | None = None,
                pcap: str | None = None, iface: str | None = None, bpf: str | None = None,
                live_parser: str = "fast",
-               memory_budget_mb: float = 400.0) -> FastAPI:
+               memory_budget_mb: float = 400.0, history: str = "") -> FastAPI:
     if mode not in ("sim", "pcap", "live"):
         raise ValueError(f"알 수 없는 mode: {mode!r} (sim | pcap | live)")
     if mode == "pcap":
@@ -180,31 +185,43 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
             return PacedSource(iter_pcap(pcap), pipe.try_offer, speed=speed, retry_on_full=True,
                                on_eof=pipe.request_flush, name="netscope-pcap")
         from .sources.live import LiveSource
-        return LiveSource(pipe.offer, iface=iface, bpf=bpf, parser=live_parser)
+        def offer(packet):
+            accepted = pipe.offer(packet)
+            if accepted:
+                app.state.processes.record(packet)
+            return accepted
+        return LiveSource(offer, iface=iface, bpf=bpf, parser=live_parser)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         hub.loop = asyncio.get_running_loop()
+        store = HistoryStore(history, mode) if history else None
+        processes = ProcessMonitor() if mode == "live" else None
+        app.state.history, app.state.processes = store, processes
         pipe = Pipeline(live=(mode == "live"), queue_max=queue_max, lateness=lateness,
                         thresholds=thresholds, allowlist=allowlist, memory_budget_mb=memory_budget_mb)
         source = make_source(pipe)
         pipe.status_provider = lambda: {"mode": mode, "source_running": source.running,
                                         "source_finished": getattr(source, "finished", False),
                                         "clients": len(hub.clients),
-                                        "ws_slow_disconnects": hub.slow_disconnects}
+                                        "ws_slow_disconnects": hub.slow_disconnects,
+                                        "history": store.status() if store else {"enabled": False}}
         pipe.on_publish = hub.publish_threadsafe
+        pipe.on_snapshot = store.record if store else None
         app.state.pipe, app.state.source, app.state.hub = pipe, source, hub
-        pipe.start()
         try:
+            if processes:
+                processes.start()
+            pipe.start()
             source.start()
-        except Exception:
-            pipe.stop()
-            raise
-        try:
             yield
         finally:
             source.stop()
             pipe.stop()
+            if processes:
+                processes.stop()
+            if store:
+                store.stop()
             for c in list(hub.clients):
                 c.closed = True
                 c.wake.set()
@@ -240,6 +257,38 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
     @app.get("/api/alerts")
     def alerts(since_id: int | None = None, limit: int = 50):
         return app.state.pipe.alerts(since_id, min(max(limit, 1), 500))
+
+    @app.get("/api/processes")
+    def processes():
+        monitor = app.state.processes
+        return monitor.snapshot() if monitor else {"enabled": False, "items": []}
+
+    @app.get("/api/history")
+    def history_records(kind: str = Query("stats", pattern="^(stats|alerts)$"),
+                        limit: int = Query(50, ge=1, le=10000),
+                        mode: str | None = Query(None, pattern="^(sim|pcap|live)$"),
+                        format: str = Query("json", pattern="^(json|csv)$")):
+        store = app.state.history
+        if store is None:
+            raise HTTPException(409, "이력 저장이 꺼져 있습니다. --history 파일경로로 실행하세요.")
+        try:
+            items = store.read(kind, limit, mode)
+        except sqlite3.Error:
+            raise HTTPException(503, "이력 파일을 읽을 수 없습니다.")
+        if format == "json":
+            return {**store.status(), "items": items}
+        fields = ["record_id", "recorded_at", "session", "mode"] + (
+            ["event_time", "window_bytes", "window_packets", "bytes_per_sec", "pps", "active_flows", "queue_drops", "degraded"]
+            if kind == "stats" else ["id", "ts", "type", "severity", "confidence", "key", "message", "details"])
+        out = io.StringIO(newline="")
+        writer = csv.DictWriter(out, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        for item in items:
+            # CSV를 Excel에서 열 때 네트워크 유래 문자열을 수식으로 실행하지 않도록 한다.
+            writer.writerow({k: "'" + v if isinstance(v, str) and v.startswith(("=", "+", "-", "@", "\t", "\r")) else v
+                             for k, v in item.items()})
+        return Response("\ufeff" + out.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="netscope-{kind}.csv"'})
 
     @app.post("/api/source/stop")
     def source_stop():

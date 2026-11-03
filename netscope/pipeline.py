@@ -52,6 +52,7 @@ class Pipeline:
         self._cached = {"rss_mb": None, "structures": {}, "latency": {}}
         self.on_publish: Callable[[int, str, list[dict]], None] | None = None
         self.status_provider: Callable[[], dict] = lambda: {}
+        self.on_snapshot: Callable[[dict, list[dict]], None] | None = None
         self.started_at = time.time()
         self.seq = 0
         self.latest_snapshot: str | None = None      # 스냅샷 JSON
@@ -166,6 +167,8 @@ class Pipeline:
         samples = eng.take_e2e_samples(end)
         snap = eng.snapshot()
         snap["status"] = self.status()
+        if self.on_snapshot is not None:
+            self.on_snapshot(snap, new)
         body = json.dumps(snap, separators=(",", ":"), ensure_ascii=False)
         self.seq += 1
         msg = f'{{"type":"snapshot","seq":{self.seq},"data":{body}}}'

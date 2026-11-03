@@ -1,0 +1,9 @@
+.practical-panel { margin-top: 20px; }
+.practical-note { margin: 0; padding: 0 20px 16px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.history-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.history-controls label { color: var(--muted); font-size: 12px; }
+.history-controls select { color: var(--text); background: #101f32; border: 1px solid #38506a; border-radius: 5px; padding: 7px; }
+.history-controls a { display: inline-block; text-decoration: none; }
+.history-controls a[hidden] { display: none; }
+.practical-panel .table-scroll { max-height: 400px; overflow: auto; }
+@media (max-width: 720px) { .practical-panel .panel-head { flex-wrap: wrap; gap: 12px; } }
