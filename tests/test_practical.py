@@ -139,6 +139,31 @@ def test_history_api_export_validation_and_disabled(tmp_path):
         assert client.get("/api/history?kind=alerts").json()["items"]
 
 
+def test_process_identity_cached_across_refreshes(monkeypatch):
+    """매초 refresh가 프로세스마다 이름을 다시 조회하면 약 200ms가 걸려 캡처율이 약 20% 떨어졌다."""
+    fake_processes(monkeypatch, [connection(pid=42), connection(pid=43, local="10.0.0.2")])
+    lookups = []
+    original = psutil.Process
+    monkeypatch.setattr(psutil, "Process", lambda pid: lookups.append(pid) or original(pid))
+    monitor = ProcessMonitor()
+    for _ in range(5):
+        monitor.refresh()
+    assert sorted(lookups) == [42, 43]                   # 새 PID만 한 번씩 조회
+    monitor._identities_at -= monitor.identity_ttl + 1   # TTL 경과 → 캐시를 비우고 다시 조회 (PID 재사용 대비)
+    monitor.refresh()
+    assert sorted(lookups) == [42, 42, 43, 43]
+
+
+def test_record_is_lock_free_and_resolved_on_snapshot(monkeypatch):
+    fake_processes(monkeypatch, [connection()])
+    monitor = ProcessMonitor()
+    monitor.refresh()
+    for _ in range(3):
+        monitor.record(make_packet(1, "10.0.0.1", "8.8.8.8", "TCP", 100, sport=5000, dport=443))
+    assert len(monitor._pending) == 1 and monitor.matched == 0   # 같은 연결은 한 키로 모아 둔다
+    assert monitor.snapshot()["items"][0]["sent_bytes"] == 300 and monitor._pending == {}
+
+
 def test_live_source_feeds_process_monitor(monkeypatch):
     from netscope.sources import live
     fake_processes(monkeypatch, [connection()])

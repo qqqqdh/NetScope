@@ -185,6 +185,9 @@ def create_app(*, mode: str = "sim", seed: int = 1, speed: float = 1.0, attack_i
             return PacedSource(iter_pcap(pcap), pipe.try_offer, speed=speed, retry_on_full=True,
                                on_eof=pipe.request_flush, name="netscope-pcap")
         from .sources.live import LiveSource
+        # 프로세스 대응은 캡처 스레드에서 한다. record()는 잠금 없는 dict 덧셈뿐이라 거의 공짜다.
+        # 분석 워커로 옮겨 봤지만 캡처율은 같고 대응률만 낮아졌다(재정렬 버퍼 지연 때문에
+        # 짧은 연결이 먼저 닫힘). bench/results/live_loopback_worker.csv
         def offer(packet):
             accepted = pipe.offer(packet)
             if accepted:

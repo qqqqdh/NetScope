@@ -25,7 +25,9 @@ def nic_packets(name: str) -> int | None:
         return None
     ps = (f"$s = Get-NetAdapterStatistics -Name '{name}'; $s.ReceivedUnicastPackets + $s.ReceivedMulticastPackets"
           f" + $s.ReceivedBroadcastPackets + $s.SentUnicastPackets + $s.SentMulticastPackets + $s.SentBroadcastPackets")
-    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    # Windows 오류 메시지가 현지 코드 페이지로 나오므로 깨져도 실패하지 않게 읽는다 (예: 루프백은 NIC가 아님)
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+                       encoding="utf-8", errors="replace")
     try:
         return int(r.stdout.strip())
     except ValueError:
@@ -38,12 +40,28 @@ def main() -> None:
     ap.add_argument("--bpf", default=None)
     ap.add_argument("--seconds", type=float, default=20)
     ap.add_argument("--parser", choices=["fast", "scapy"], default="fast")
+    ap.add_argument("--processes", choices=["worker", "capture"], default=None,
+                    help="프로세스 대응을 켬다. worker: 분석 워커에서(서버와 같음), capture: 캡처 스레드에서(이전 방식)")
     ap.add_argument("--slow-ms", type=float, default=0,
                     help="검증용: 패킷마다 일부러 지연을 넣어 드라이버 단계 손실을 일으킨다")
     a = ap.parse_args()
 
     pipe = Pipeline(live=True)
     offer = pipe.offer
+    monitor = None
+    if a.processes:
+        from netscope.processes import ProcessMonitor
+
+        monitor = ProcessMonitor()
+        monitor.start()
+        if a.processes == "worker":                  # server.create_app과 같은 경로
+            pipe.engine.packet_listeners.append(lambda pkt, flow, m=monitor: m.record(pkt))
+        else:
+            def offer(p, _o=pipe.offer, _m=monitor):
+                accepted = _o(p)
+                if accepted:
+                    _m.record(p)
+                return accepted
     if a.slow_ms:
         def offer(p, _o=pipe.offer, _d=a.slow_ms / 1000):
             time.sleep(_d)
@@ -60,6 +78,8 @@ def main() -> None:
     src.stop()
     time.sleep(2.5)                               # 마지막 초 마감 (lateness 1초 + 여유)
     pipe.stop()
+    if monitor is not None:
+        monitor.stop()
     eng = pipe.engine
     snap = eng.snapshot()
     out = {
@@ -67,6 +87,8 @@ def main() -> None:
         "captured": src.captured, "skipped_non_ip": src.skipped,
         "capture_pps": round(src.captured / elapsed, 1),
         "queue_drops": pipe._drops, "processed": eng.processed,
+        "processes": ({k: monitor.snapshot()[k] for k in ("matched_bytes", "unmatched_bytes")}
+                      if monitor else None),
         "driver_stats": src.stats, "capture_drop_health": eng.health.totals.get("capture_drop", 0),
         "window_captured": cap1 - cap0,
         "window_nic_packets": (nic1 - nic0) if nic0 is not None and nic1 is not None else None,
